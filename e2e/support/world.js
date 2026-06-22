@@ -1,11 +1,13 @@
 import { setDefaultTimeout, setWorldConstructor } from "@cucumber/cucumber";
 import { chromium } from "playwright";
-import { createServer } from "node:http";
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 setDefaultTimeout(60_000);
 
-const rootDir = new URL("../../", import.meta.url).pathname;
+const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const waitForUrl = async (url, timeoutMs = 30_000) => {
   const started = Date.now();
@@ -141,7 +143,7 @@ class OAuthWorld {
   }
 
   async startApp() {
-    this.spawnProcess("npm", ["run", "dev:backend"], {
+    this.spawnProcess("node", ["backend/server.js"], {
       BACKEND_PORT: String(this.backendPort),
       FRONTEND_ORIGIN: this.frontendBaseUrl,
       GITHUB_CLIENT_ID: "mock-client-id",
@@ -150,13 +152,24 @@ class OAuthWorld {
       GITHUB_USER_ENDPOINT: `${this.mockBaseUrl}/user`
     });
 
-    this.spawnProcess("npm", ["run", "dev:frontend", "--", "--host", "127.0.0.1"], {
-      VITE_GITHUB_CLIENT_ID: "mock-client-id",
-      VITE_GITHUB_AUTHORIZATION_ENDPOINT: `${this.mockBaseUrl}/login/oauth/authorize`,
-      VITE_GITHUB_REDIRECT_URI: `${this.frontendBaseUrl}/callback`,
-      VITE_GITHUB_SCOPE: "read:user user:email",
-      VITE_BACKEND_BASE_URL: this.backendBaseUrl
-    });
+    this.spawnProcess(
+      "node",
+      [
+        "node_modules/vite/bin/vite.js",
+        "preview",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(this.frontendPort)
+      ],
+      {
+        VITE_GITHUB_CLIENT_ID: "mock-client-id",
+        VITE_GITHUB_AUTHORIZATION_ENDPOINT: `${this.mockBaseUrl}/login/oauth/authorize`,
+        VITE_GITHUB_REDIRECT_URI: `${this.frontendBaseUrl}/callback`,
+        VITE_GITHUB_SCOPE: "read:user user:email",
+        VITE_BACKEND_BASE_URL: this.backendBaseUrl
+      }
+    );
 
     await Promise.all([
       waitForUrl(`${this.backendBaseUrl}/health`),
@@ -184,7 +197,12 @@ class OAuthWorld {
             }
 
             child.once("exit", resolve);
-            child.kill();
+            child.kill("SIGTERM");
+            setTimeout(() => {
+              if (child.exitCode === null) {
+                child.kill("SIGKILL");
+              }
+            }, 2_000);
           })
       )
     );
