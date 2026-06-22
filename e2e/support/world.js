@@ -122,9 +122,9 @@ class OAuthWorld {
     await new Promise((resolve) => this.mockServer.listen(this.mockPort, "127.0.0.1", resolve));
   }
 
-  spawnProcess(command, args, env) {
+  spawnProcess(command, args, env, options = {}) {
     const child = spawn(command, args, {
-      cwd: this.rootDir,
+      cwd: options.cwd ?? this.rootDir,
       env: {
         ...process.env,
         ...env
@@ -156,7 +156,7 @@ class OAuthWorld {
     this.spawnProcess(
       "node",
       [
-        "node_modules/vite/bin/vite.js",
+        "../node_modules/vite/bin/vite.js",
         "preview",
         "--host",
         "127.0.0.1",
@@ -169,6 +169,9 @@ class OAuthWorld {
         VITE_GITHUB_REDIRECT_URI: `${this.frontendBaseUrl}/callback`,
         VITE_GITHUB_SCOPE: "read:user user:email",
         VITE_BACKEND_BASE_URL: this.backendBaseUrl
+      },
+      {
+        cwd: resolve(this.rootDir, "frontend")
       }
     );
 
