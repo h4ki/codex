@@ -2,7 +2,6 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use getrandom::getrandom;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use url::Url;
 use wasm_bindgen::prelude::*;
 
 #[derive(Serialize)]
@@ -33,20 +32,21 @@ pub fn start_github_login(
     let code_verifier = random_url_token(64)?;
     let code_challenge = pkce_challenge(&code_verifier);
 
-    let mut url = Url::parse(authorization_endpoint)
-        .map_err(|_| error("GitHub Authorize URL ist ungueltig."))?;
+    if authorization_endpoint.trim().is_empty() {
+        return Err(error("GitHub Authorize URL darf nicht leer sein."));
+    }
 
-    url.query_pairs_mut()
-        .append_pair("client_id", client_id)
-        .append_pair("redirect_uri", redirect_uri)
-        .append_pair("scope", scope)
-        .append_pair("state", &state)
-        .append_pair("code_challenge", &code_challenge)
-        .append_pair("code_challenge_method", "S256")
-        .append_pair("prompt", "select_account");
+    let authorization_url = format!(
+        "{authorization_endpoint}?client_id={}&redirect_uri={}&scope={}&state={}&code_challenge={}&code_challenge_method=S256&prompt=select_account",
+        encode(client_id),
+        encode(redirect_uri),
+        encode(scope),
+        encode(&state),
+        encode(&code_challenge),
+    );
 
     let payload = LoginStart {
-        authorization_url: url.to_string(),
+        authorization_url,
         state,
         code_verifier,
     };
@@ -57,18 +57,15 @@ pub fn start_github_login(
 
 #[wasm_bindgen]
 pub fn complete_github_login(callback_url: &str, expected_state: &str) -> Result<JsValue, JsValue> {
-    let url = Url::parse(callback_url).map_err(|_| error("Callback URL ist ungueltig."))?;
-    let params = url.query_pairs();
-
     let mut code = None;
     let mut state = None;
     let mut oauth_error = None;
 
-    for (key, value) in params {
-        match key.as_ref() {
-            "code" => code = Some(value.into_owned()),
-            "state" => state = Some(value.into_owned()),
-            "error" => oauth_error = Some(value.into_owned()),
+    for (key, value) in parse_query(callback_url)? {
+        match key.as_str() {
+            "code" => code = Some(value),
+            "state" => state = Some(value),
+            "error" => oauth_error = Some(value),
             _ => {}
         }
     }
@@ -100,17 +97,89 @@ fn pkce_challenge(code_verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(digest)
 }
 
+fn parse_query(url: &str) -> Result<Vec<(String, String)>, JsValue> {
+    let query = url
+        .split_once('?')
+        .map(|(_, query)| query)
+        .unwrap_or_default()
+        .split_once('#')
+        .map(|(query, _)| query)
+        .unwrap_or_else(|| url.split_once('?').map(|(_, query)| query).unwrap_or_default());
+
+    query
+        .split('&')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let (key, value) = part.split_once('=').unwrap_or((part, ""));
+            Ok((decode(key)?, decode(value)?))
+        })
+        .collect()
+}
+
+fn encode(value: &str) -> String {
+    let mut encoded = String::new();
+
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char)
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+
+    encoded
+}
+
+fn decode(value: &str) -> Result<String, JsValue> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+
+    while index < bytes.len() {
+        match bytes[index] {
+            b'%' if index + 2 < bytes.len() => {
+                let hex = &value[index + 1..index + 3];
+                let byte = u8::from_str_radix(hex, 16)
+                    .map_err(|_| error("Callback URL konnte nicht decodiert werden."))?;
+                decoded.push(byte);
+                index += 3;
+            }
+            b'+' => {
+                decoded.push(b' ');
+                index += 1;
+            }
+            byte => {
+                decoded.push(byte);
+                index += 1;
+            }
+        }
+    }
+
+    String::from_utf8(decoded).map_err(|_| error("Callback URL konnte nicht decodiert werden."))
+}
+
 fn error(message: &str) -> JsValue {
     JsValue::from_str(message)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::pkce_challenge;
+    use super::{decode, encode, pkce_challenge};
 
     #[test]
     fn creates_known_pkce_challenge() {
         let challenge = pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk");
         assert_eq!(challenge, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+    }
+
+    #[test]
+    fn encodes_oauth_query_values() {
+        assert_eq!(encode("read:user user:email"), "read%3Auser%20user%3Aemail");
+    }
+
+    #[test]
+    fn decodes_callback_values() {
+        assert_eq!(decode("mock%20code").unwrap(), "mock code");
     }
 }

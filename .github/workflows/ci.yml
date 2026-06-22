@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+env:
+  CARGO_HTTP_MULTIPLEXING: false
+
 jobs:
   rust:
     runs-on: ubuntu-latest

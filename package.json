@@ -9,10 +9,10 @@
     "frontend"
   ],
   "scripts": {
-    "wasm:build": "wasm-pack build wasm-auth-middleware --target web --out-dir ../frontend/src/wasm",
+    "wasm:build": "node scripts/build-wasm.js",
     "dev:frontend": "npm run dev --prefix frontend",
     "dev:backend": "npm run dev --prefix backend",
-    "test:e2e": "npm run wasm:build && npm run build --prefix frontend && cucumber-js e2e/features --import e2e/support/world.js --import e2e/steps/*.js --force-exit",
+    "test:e2e": "node e2e/run.js",
     "check:rust": "cargo check --manifest-path wasm-auth-middleware/Cargo.toml",
     "check": "npm run check:rust"
   },

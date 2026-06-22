@@ -26,7 +26,8 @@ const waitForUrl = async (url, timeoutMs = 30_000) => {
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
-  throw lastError ?? new Error(`Timeout beim Warten auf ${url}`);
+  const detail = lastError instanceof Error ? `: ${lastError.message}` : "";
+  throw new Error(`Timeout beim Warten auf ${url}${detail}`);
 };
 
 const readJsonBody = async (request) =>
@@ -171,10 +172,15 @@ class OAuthWorld {
       }
     );
 
-    await Promise.all([
-      waitForUrl(`${this.backendBaseUrl}/health`),
-      waitForUrl(this.frontendBaseUrl)
-    ]);
+    try {
+      await Promise.all([
+        waitForUrl(`${this.backendBaseUrl}/health`),
+        waitForUrl(this.frontendBaseUrl)
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "App-Start fehlgeschlagen.";
+      throw new Error(`${message}\nstdout:\n${this.lastStdout ?? ""}\nstderr:\n${this.lastStderr ?? ""}`);
+    }
   }
 
   async openBrowser() {
