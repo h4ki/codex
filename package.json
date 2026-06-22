@@ -1,0 +1,24 @@
+{
+  "name": "codex-webassembly-oauth",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Rust WebAssembly middleware with GitHub OAuth2 authentication.",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "wasm:build": "wasm-pack build wasm-auth-middleware --target web --out-dir ../frontend/src/wasm",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "npm run dev --prefix backend",
+    "test:e2e": "npm run wasm:build && cucumber-js e2e/features --import e2e/support/world.js --import e2e/steps/*.js",
+    "check:rust": "cargo check --manifest-path wasm-auth-middleware/Cargo.toml",
+    "check": "npm run check:rust"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^10.9.0",
+    "playwright": "^1.45.3",
+    "wasm-pack": "^0.13.1"
+  }
+}

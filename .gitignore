@@ -1,0 +1,7 @@
+node_modules/
+target/
+dist/
+frontend/src/wasm/
+.env
+backend/.env
+frontend/.env
